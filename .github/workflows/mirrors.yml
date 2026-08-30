@@ -47,7 +47,7 @@ jobs:
       # existed carries none at all. The version comes from the manifests for the
       # same reason `action.yml` reads it there -- a ref can be a branch or a
       # commit, while a release is named after a version.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Resolve the version being mirrored
         id: target
@@ -98,7 +98,7 @@ jobs:
           done
           find mirrors-out -type f | sort
 
-      - uses: actions/create-github-app-token@v2
+      - uses: actions/create-github-app-token@v3
         id: app
         with:
           app-id: ${{ vars.MIRROR_APP_ID }}
