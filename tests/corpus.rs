@@ -70,10 +70,13 @@ fn load_corpus() -> Vec<Case> {
     // `read_dir` yields in whatever order the filesystem gives, so the cases
     // are sorted to make a failure list comparable between runs and machines.
     directories.sort();
-    directories.into_iter().map(load_case).collect()
+    directories
+        .iter()
+        .map(|directory| load_case(directory))
+        .collect()
 }
 
-fn load_case(directory: PathBuf) -> Case {
+fn load_case(directory: &Path) -> Case {
     let meta = parse_meta(&read_verbatim(&directory.join("case.txt")));
     let get = |key: &str| {
         meta.get(key)
@@ -144,7 +147,7 @@ fn corpus_case_output() {
 fn corpus_case_counts() {
     // Split from the output assertion on purpose: identical content with a
     // wrong count means the reporting drifted from the rewriting, and that is
-    // what `--check` and `--json` consumers actually read.
+    // what `--fail-on-change` and `--json` consumers actually read.
     let cases = load_corpus();
     let mut failures = Vec::new();
     for case in &cases {

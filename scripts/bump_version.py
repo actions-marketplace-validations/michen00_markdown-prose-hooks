@@ -2,10 +2,10 @@
 """Move every version pin in this tree at once.
 
 A release is a tag, and the tag is only correct if the tree it names already
-says so everywhere. Six files carry the number and they are not alike: two are
-package manifests, two are lockfiles derived from them, and two are pins that a
-consumer resolves -- the readme snippets somebody copies, and the `uses:` line
-in `unwrap-propose.yml` that the reusable workflow runs.
+says so everywhere. The files carrying the number are not alike: two are
+package manifests, two are lockfiles derived from them, and the rest are pins
+that a consumer resolves -- the readme snippets somebody copies, and the
+`uses:` line in each reusable workflow that runs the action.
 
 That last one is why this script exists rather than a sentence in
 CONTRIBUTING. The releasing section named the two manifests and stopped there,
@@ -46,6 +46,8 @@ SITES: tuple[tuple[str, str], ...] = (
     ('Cargo.toml', 'version = "{v}"'),
     ('README.md', 'v{v}'),
     ('.github/workflows/unwrap-propose.yml', 'markdown-prose-hooks@v{v}'),
+    ('.github/workflows/unwrap-pr-body-check.yml', 'markdown-prose-hooks@v{v}'),
+    ('.github/workflows/unwrap-pr-body.yml', 'markdown-prose-hooks@v{v}'),
 )
 
 # Derived from the manifests rather than edited, so they cannot disagree with
@@ -120,7 +122,12 @@ def relock() -> list[str]:
     """Refresh each lockfile from its manifest."""
     done = []
     for name, command in LOCKFILES:
-        result = subprocess.run(command, cwd=REPO, capture_output=True, text=True)
+        # `check=False` stated rather than left to the default: the return
+        # code is read on the next line, and a raise here would lose the
+        # stderr that the message below carries.
+        result = subprocess.run(
+            command, cwd=REPO, capture_output=True, text=True, check=False
+        )
         if result.returncode != 0:
             raise SystemExit(f'{name}: {" ".join(command)} failed\n{result.stderr}')
         done.append(name)
@@ -189,6 +196,7 @@ def resume(new: str) -> None:
 
 
 def main() -> None:
+    """Rewrite every pinned version to the one named on the command line."""
     if len(sys.argv) != 2 or not VERSION.match(sys.argv[1]):
         raise SystemExit('usage: bump_version.py X.Y.Z')
     new = sys.argv[1]

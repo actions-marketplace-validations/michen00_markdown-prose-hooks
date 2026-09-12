@@ -9,7 +9,11 @@ the transcript skip, encoding failures, and the exit codes those produce.
 
 import io
 import json
+import re
 import sys
+from pathlib import Path
+
+import pytest
 
 from markdown_prose_hooks.unwrap import (
     _collapse_segment,
@@ -24,7 +28,9 @@ from markdown_prose_hooks.unwrap import (
 )
 
 
-def test_cli_write_rewrites_the_file_and_reports_changed(tmp_path, capsys) -> None:
+def test_cli_write_rewrites_the_file_and_reports_changed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """--write rewrites a wrapped file and the JSON summary reports the change."""
     doc = tmp_path / 'note.md'
     doc.write_text('A wrapped\nparagraph.\n', encoding='utf-8')
@@ -34,7 +40,9 @@ def test_cli_write_rewrites_the_file_and_reports_changed(tmp_path, capsys) -> No
     assert json.loads(capsys.readouterr().out)['changed'] is True
 
 
-def test_cli_reports_no_change_for_unwrapped_input(tmp_path, capsys) -> None:
+def test_cli_reports_no_change_for_unwrapped_input(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Already-unwrapped input reports changed=false and does not rewrite."""
     doc = tmp_path / 'note.md'
     original = 'One clean line.\n'
@@ -44,7 +52,9 @@ def test_cli_reports_no_change_for_unwrapped_input(tmp_path, capsys) -> None:
     assert json.loads(capsys.readouterr().out)['changed'] is False
 
 
-def test_cli_accepts_newline_delimited_file_list(tmp_path, capsys) -> None:
+def test_cli_accepts_newline_delimited_file_list(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """--files-from processes every newline-delimited Markdown path."""
     first = tmp_path / 'first.md'
     second = tmp_path / 'second.md'
@@ -61,7 +71,9 @@ def test_cli_accepts_newline_delimited_file_list(tmp_path, capsys) -> None:
     assert second.read_text(encoding='utf-8') == 'Two wrapped paragraphs.\n'
 
 
-def test_cli_missing_file_list_emits_structured_error(tmp_path, capsys) -> None:
+def test_cli_missing_file_list_emits_structured_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """A missing --files-from path returns a JSON error instead of a traceback."""
     missing = tmp_path / 'missing.txt'
 
@@ -73,7 +85,9 @@ def test_cli_missing_file_list_emits_structured_error(tmp_path, capsys) -> None:
     assert 'cannot read --files-from' in payload['errors'][0]
 
 
-def test_cli_skips_symlinked_markdown(tmp_path, capsys) -> None:
+def test_cli_skips_symlinked_markdown(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """A symlink input never causes its target to be rewritten."""
     target = tmp_path / 'target.md'
     target.write_text('Wrapped prose\nmust stay.\n', encoding='utf-8')
@@ -87,7 +101,9 @@ def test_cli_skips_symlinked_markdown(tmp_path, capsys) -> None:
     assert target.read_text(encoding='utf-8') == 'Wrapped prose\nmust stay.\n'
 
 
-def test_cli_preserves_crlf_line_endings(tmp_path, capsys) -> None:
+def test_cli_preserves_crlf_line_endings(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """A rewrite removes only soft wraps and retains CRLF endings."""
     doc = tmp_path / 'crlf.md'
     doc.write_bytes(b'Wrapped prose\r\nuses CRLF.\r\n')
@@ -98,7 +114,9 @@ def test_cli_preserves_crlf_line_endings(tmp_path, capsys) -> None:
     assert doc.read_bytes() == b'Wrapped prose uses CRLF.\r\n'
 
 
-def test_cli_skips_transcript_like_markdown(tmp_path, capsys) -> None:
+def test_cli_skips_transcript_like_markdown(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Repeated speaker turns protect transcript source evidence from rewrites."""
     doc = tmp_path / 'notes.md'
     original = (
@@ -118,7 +136,9 @@ def test_cli_skips_transcript_like_markdown(tmp_path, capsys) -> None:
     assert doc.read_text(encoding='utf-8') == original
 
 
-def test_cli_skips_timestamped_transcript_turns(tmp_path, capsys) -> None:
+def test_cli_skips_timestamped_transcript_turns(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Timestamped speaker headings protect transcript evidence from rewrites."""
     doc = tmp_path / 'timestamped.md'
     original = (
@@ -138,7 +158,9 @@ def test_cli_skips_timestamped_transcript_turns(tmp_path, capsys) -> None:
     assert doc.read_text(encoding='utf-8') == original
 
 
-def test_cli_unwraps_long_prose_with_sparse_colon_intros(tmp_path, capsys) -> None:
+def test_cli_unwraps_long_prose_with_sparse_colon_intros(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Sparse colon headings do not misclassify a long prose document."""
     doc = tmp_path / 'design.md'
     filler = ''.join(
@@ -156,7 +178,9 @@ def test_cli_unwraps_long_prose_with_sparse_colon_intros(tmp_path, capsys) -> No
     assert 'the pass must join into one line.' in doc.read_text(encoding='utf-8')
 
 
-def test_cli_non_utf8_file_list_emits_structured_error(tmp_path, capsys) -> None:
+def test_cli_non_utf8_file_list_emits_structured_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """A non-UTF-8 file list returns JSON diagnostics without a traceback."""
     file_list = tmp_path / 'files.txt'
     file_list.write_bytes(b'\xff\xfe')
@@ -167,7 +191,9 @@ def test_cli_non_utf8_file_list_emits_structured_error(tmp_path, capsys) -> None
     assert 'cannot read --files-from' in payload['errors'][0]
 
 
-def test_cli_non_utf8_markdown_emits_structured_error(tmp_path, capsys) -> None:
+def test_cli_non_utf8_markdown_emits_structured_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """A non-UTF-8 Markdown input returns JSON diagnostics without a traceback."""
     doc = tmp_path / 'bad.md'
     doc.write_bytes(b'\xff\xfe')
@@ -178,7 +204,9 @@ def test_cli_non_utf8_markdown_emits_structured_error(tmp_path, capsys) -> None:
     assert 'not valid UTF-8' in payload['errors'][0]
 
 
-def test_cli_fail_on_change_exits_nonzero_without_writing(tmp_path, capsys) -> None:
+def test_cli_fail_on_change_exits_nonzero_without_writing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """The gate reports a pending change and leaves the file as it found it."""
     doc = tmp_path / 'doc.md'
     doc.write_text('Prose that\nwraps.\n', encoding='utf-8')
@@ -189,7 +217,9 @@ def test_cli_fail_on_change_exits_nonzero_without_writing(tmp_path, capsys) -> N
     assert doc.read_text(encoding='utf-8') == 'Prose that\nwraps.\n'
 
 
-def test_cli_fail_on_change_exits_zero_when_already_unwrapped(tmp_path, capsys) -> None:
+def test_cli_fail_on_change_exits_zero_when_already_unwrapped(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Nothing to do is a pass, which is what makes the flag usable as a gate."""
     doc = tmp_path / 'doc.md'
     doc.write_text('Prose that does not wrap.\n', encoding='utf-8')
@@ -199,7 +229,9 @@ def test_cli_fail_on_change_exits_zero_when_already_unwrapped(tmp_path, capsys) 
     assert json.loads(capsys.readouterr().out)['changed'] is False
 
 
-def test_cli_fail_on_change_still_rewrites_with_write(tmp_path, capsys) -> None:
+def test_cli_fail_on_change_still_rewrites_with_write(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Rewriting and failing compose, so a fixing run still stops the build."""
     doc = tmp_path / 'doc.md'
     doc.write_text('Prose that\nwraps.\n', encoding='utf-8')
@@ -210,7 +242,9 @@ def test_cli_fail_on_change_still_rewrites_with_write(tmp_path, capsys) -> None:
     assert doc.read_text(encoding='utf-8') == 'Prose that wraps.\n'
 
 
-def test_cli_without_fail_on_change_reports_change_as_success(tmp_path, capsys) -> None:
+def test_cli_without_fail_on_change_reports_change_as_success(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """The default stays report-only, so `pre-commit` decides the run's fate."""
     doc = tmp_path / 'doc.md'
     doc.write_text('Prose that\nwraps.\n', encoding='utf-8')
@@ -220,7 +254,7 @@ def test_cli_without_fail_on_change_reports_change_as_success(tmp_path, capsys) 
     assert json.loads(capsys.readouterr().out)['changed'] is True
 
 
-def test_cli_report_uses_lf_whatever_the_platform_translates(tmp_path) -> None:
+def test_cli_report_uses_lf_whatever_the_platform_translates(tmp_path: Path) -> None:
     """The report's own line endings are the tool's to decide, not the host's.
 
     A text stream translates on write, so on Windows every report line and the
@@ -252,7 +286,9 @@ def test_cli_report_uses_lf_whatever_the_platform_translates(tmp_path) -> None:
     assert b'\r' not in written
 
 
-def test_error_naming_survives_the_platform_choosing_the_exception(tmp_path) -> None:
+def test_error_naming_survives_the_platform_choosing_the_exception(
+    tmp_path: Path,
+) -> None:
     """A directory is named as one however the platform reports it.
 
     Opening a directory raises `IsADirectoryError` on POSIX and
@@ -322,7 +358,7 @@ def test_star_runs_collapse_so_spelling_does_not_change_meaning() -> None:
 
 
 def test_an_ordered_list_marker_is_ascii_digits_only() -> None:
-    """CommonMark says 1-9 arabic digits, and `\\d` said 650 of them, or 680."""
+    r"""CommonMark says 1-9 arabic digits; `\d` said 650, then 680, now 760."""
     # A matcher-level pin rather than only a corpus case, because this is where
     # the rule lives and where a second implementation reads it. The corpus
     # case shows the consequence; this shows the boundary.
@@ -380,3 +416,165 @@ def test_the_region_markers_are_matched_exactly() -> None:
     assert not _is_ignore_block_end('<!-- unwrap-ignore -->')
     assert not _is_ignore_block_end('<!-- unwrap-ignore-start -->')
     assert not _is_ignore_block_end('<!-- unwrap-ignore-ended -->')
+
+
+def test_the_negative_number_rule_is_the_tools_own(tmp_path: Path) -> None:
+    r"""A `-`-leading token is classified by this tool's pattern, not argparse's.
+
+    The vectors are the ones `is_negative_number` carries on the Rust side, and
+    the point of running them through `main` rather than against the pattern is
+    that the pattern alone cannot fail the way this can. `_build_parser` assigns
+    `_negative_number_matcher`, and an interpreter that renamed that attribute
+    would leave the assignment writing where nothing reads and take argparse's
+    own rule back -- silently, and differently per version: through 3.13 argparse
+    agrees with this tool, and 3.14's `-\.?\d` stops at the first digit, so
+    `-1a` and `-5.` would become paths and `--write` would format the file named
+    beside them. Going through `main` is what makes that a red test here rather
+    than a divergence found in the CLI tier on one matrix leg.
+    """
+    doc = tmp_path / 'note.md'
+    original = 'A wrapped\nparagraph.\n'
+
+    for token in ('-1a', '-5.', '-١٢'):
+        doc.write_text(original, encoding='utf-8')
+        with pytest.raises(SystemExit) as raised:
+            main(['--write', token, str(doc)])
+        assert raised.value.code == 2, token
+        assert doc.read_text(encoding='utf-8') == original, token
+
+    # The accepting half, so a pattern narrowed until it matches nothing would
+    # not pass this test by rejecting everything. Each token is bound as a path,
+    # names no file, and is skipped the way any missing path is -- which leaves
+    # exit 0 and the file named beside it formatted, where a token read as an
+    # option would have stopped the run at 2 before anything was opened.
+    for token in ('-12', '-.5', '-1.5'):
+        doc.write_text(original, encoding='utf-8')
+        assert main(['--write', token, str(doc)]) == 0, token
+        assert doc.read_text(encoding='utf-8') == 'A wrapped paragraph.\n', token
+
+    # The same tokens with a newline on the end. `$` in a Python pattern matches
+    # before a token's final newline where the Rust rule reads every byte, so an
+    # end anchor that stops one byte early is a divergence rather than a
+    # spelling: each of these binds as a path on one implementation and as an
+    # unknown option on the other, and `--write` beside a real path formats the
+    # tree on the first where the second reports an error and opens nothing.
+    for token in ('-12\n', '-.5\n', '-1.5\n'):
+        doc.write_text(original, encoding='utf-8')
+        with pytest.raises(SystemExit) as raised:
+            main(['--write', token, str(doc)])
+        assert raised.value.code == 2, token
+        assert doc.read_text(encoding='utf-8') == original, token
+
+
+def test_the_whitespace_set_has_not_moved_under_the_interpreter() -> None:
+    r"""`str.strip()` still removes exactly the 29 code points the Rust writes out.
+
+    `str.strip()`, `str.isspace()` and `\s` on a `str` pattern share one set:
+    Unicode `White_Space` plus the four C0 separators. All three are checked,
+    not just the one the tool calls most: `is_python_space` is pinned as the
+    equivalent of all three, and the matcher constants use `\s` directly, so a
+    runtime that moved one of them without the others would leave a
+    `strip()`-only guard green while the transform had already diverged.
+    `is_python_space` in `src/scan.rs` writes those 29 out by hand rather than
+    delegating to
+    `char::is_whitespace`, which is `White_Space` alone and so 25, and that file
+    carries the matching drift detector for its own side. This is the detector for
+    this one: the two implementations agree because both are pinned to this list,
+    not because two runtimes happen to define it the same way, so an interpreter
+    that moves it has to fail here rather than quietly change what the tool reads
+    as a blank line.
+
+    Measured identical on 3.10, 3.11, 3.12, 3.13 and 3.14 on 2026-09-04.
+    """
+    expected = (
+        # tab, newline, vertical tab, form feed, carriage return
+        0x09,
+        0x0A,
+        0x0B,
+        0x0C,
+        0x0D,
+        # file, group, record and unit separator: the four `char::is_whitespace`
+        # omits, which is why `is_python_space` writes the set out instead
+        0x1C,
+        0x1D,
+        0x1E,
+        0x1F,
+        0x20,  # space
+        0x85,  # next line
+        0xA0,  # no-break space
+        0x1680,  # ogham space mark
+        0x2000,
+        0x2001,
+        0x2002,
+        0x2003,
+        0x2004,
+        0x2005,
+        0x2006,
+        0x2007,
+        0x2008,
+        0x2009,
+        0x200A,
+        0x2028,  # line separator
+        0x2029,  # paragraph separator
+        0x202F,  # narrow no-break space
+        0x205F,  # medium mathematical space
+        0x3000,  # ideographic space
+    )
+    # One sweep, one `chr` per code point, the pattern compiled once. The guard
+    # has to cover the whole range to catch an addition anywhere in it, so the
+    # sweep is the cost of the test and paying it three times is three times too
+    # much for the same answer.
+    matches_pattern = re.compile(r'\s').fullmatch
+    strip_hits: list[int] = []
+    isspace_hits: list[int] = []
+    pattern_hits: list[int] = []
+    for cp in range(0x110000):
+        char = chr(cp)
+        if char.strip() == '':
+            strip_hits.append(cp)
+        if char.isspace():
+            isspace_hits.append(cp)
+        if matches_pattern(char) is not None:
+            pattern_hits.append(cp)
+
+    for name, found in (
+        ('str.strip()', tuple(strip_hits)),
+        ('str.isspace()', tuple(isspace_hits)),
+        (r'\s', tuple(pattern_hits)),
+    ):
+        assert found == expected, (
+            f'{name} no longer selects exactly this set; '
+            f'gained {[f"U+{c:04X}" for c in set(found) - set(expected)]}, '
+            f'lost {[f"U+{c:04X}" for c in set(expected) - set(found)]}'
+        )
+
+
+def test_the_characters_that_fold_into_ascii_have_not_moved() -> None:
+    """Lowercasing still maps only these onto ASCII.
+
+    The HTML block matcher lowercases a whole line and looks for an ASCII needle
+    such as `</script>`, so a character whose lowercase *contains* ASCII can
+    complete one. Twenty-six of those are `A`-`Z`. The other two are the reason the
+    line cannot simply be folded with `str.lower`'s ASCII-only counterpart, and the
+    reason this set is worth pinning: it is defined by the runtime's case tables,
+    which do move -- 1393 code points gained a lowercase mapping by 3.11 and 1460
+    by 3.14 -- and none of those additions landed in this set only because none of
+    them folded into ASCII.
+
+    `U+0130` is the length-changing one, folding to two code points, which is safe
+    here only because the fold feeds a containment test and never an offset.
+
+    Measured on 3.10 through 3.14 on 2026-09-04, and matched by the Rust detector
+    in `src/scan.rs`.
+    """
+    expected = (*range(ord('A'), ord('Z') + 1), 0x0130, 0x212A)
+    found = tuple(
+        cp
+        for cp in range(0x110000)
+        if (lowered := chr(cp).lower()) != chr(cp) and any(c.isascii() for c in lowered)
+    )
+    assert found == expected, (
+        'lowercasing now maps a different set onto ASCII; '
+        f'gained {[f"U+{c:04X}" for c in set(found) - set(expected)]}, '
+        f'lost {[f"U+{c:04X}" for c in set(expected) - set(found)]}'
+    )

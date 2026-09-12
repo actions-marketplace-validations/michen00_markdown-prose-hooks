@@ -30,15 +30,62 @@ concurrency:
 # enough that the repository limit is not in play.
 
 jobs:
-  lint:
+  pre-commit:
+    # The suite in `.pre-commit-config.yaml`, gated rather than merely advised.
+    # pre-commit.ci runs every hook and autofixes what it can, but it posts no
+    # required context, so a pull request could carry a red mypy, typos,
+    # codespell, markdownlint, yamllint, prettier or whitespace hook and merge
+    # anyway. This job is where the suite gates.
+    #
+    # Not the same question as `hook` below, which resolves the generated
+    # mirrors' manifests the way a consumer does and never reads this file.
+    #
+    # `pre-commit` itself is unpinned here, as in `hook`. A newer runner finds
+    # the same things: every tool it runs is pinned by its own `rev:`, so the
+    # findings come from those pins and not from this line.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: actions/setup-python@v7
         with:
-          enable-cache: true
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
+          python-version: '3.13'
+      - run: python -m pip install --disable-pip-version-check pre-commit
+      # Every hook environment is built from source otherwise: a Go toolchain
+      # for actionlint, Node for prettier and markdownlint, and a virtualenv
+      # apiece for the Python ones. `restore-keys` is what makes that cheap on a
+      # miss, and the exact key misses whenever this file changes at all, down to
+      # a comment: the prefix restores the previous run's environments, leaving
+      # `pre-commit` to build only the hooks whose `rev:` actually moved. Without
+      # it a one-byte edit restores nothing and rebuilds all of them.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: pre-commit-${{ runner.os }}-
+      # actionlint hands every `run:` block to shellcheck and finds it on this
+      # job's PATH: `language: golang` isolates the hook from the shellcheck
+      # hook's virtualenv, not from the image's own binary. Both directions were
+      # measured -- with shellcheck present the actionlint hook reports SC2086
+      # inside a `run:` block, and with it absent the identical workflow passes.
+      # A missing binary is therefore silent, which is the one failure worth a
+      # guard. The image's copy is what the delegation uses; the `shellcheck`
+      # hook pins its own for the scripts on disk that it reads instead.
+      - name: Assert the binary actionlint delegates to is present
+        run: |
+          set -euo pipefail
+          command -v shellcheck >/dev/null || {
+            echo '::error::shellcheck is absent, so actionlint would skip every' \
+              'run: block without saying so'
+            exit 1
+          }
+      # The three the `ci:` block skips, for the reasons stated there: the unwrap
+      # hook resolves through `uv run`, and the cargo pair would answer against
+      # whatever toolchain this image carries rather than the declared floor.
+      # Neither goes unchecked -- `rust-lint` runs the pair at 1.86.0, and `hook`
+      # runs the unwrap through the framework.
+      - run: pre-commit run --all-files --show-diff-on-failure
+        env:
+          SKIP: unwrap-markdown-prose-py,cargo-fmt,cargo-clippy
 
   test:
     runs-on: ${{ matrix.os }}
@@ -50,16 +97,16 @@ jobs:
         # on trust: this tool decides what a line ending is, and that is the one
         # platform where getting it wrong rewrites every file it touches.
         os: [ubuntu-latest]
-        python-version: ['3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
         include:
           - os: macos-latest
             python-version: '3.10'
           - os: macos-latest
-            python-version: '3.13'
+            python-version: '3.14'
           - os: windows-latest
             python-version: '3.10'
           - os: windows-latest
-            python-version: '3.13'
+            python-version: '3.14'
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v9.0.0
@@ -79,6 +126,12 @@ jobs:
     # is the only authentication left that stores nothing, and `id-token: write`
     # is what mints the assertion it checks. The permission is granted on this
     # job alone; the workflow default above stays read-only.
+    #
+    # This is the one job holding a credential that cannot avoid the dev
+    # dependency group, because measuring coverage means running the suite. The
+    # other two -- `pypi` and the mirror push in mirrors.yml -- reach their tools
+    # with `uv run --no-project` for that reason. What this one can mint is
+    # scoped to Codecov rather than to a registry or to either mirror.
     #
     # `fail_ci_if_error` is on because the alternative had already happened: with
     # it off, every upload since the badge was added was refused for want of a
@@ -251,10 +304,13 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/check_mirror_identity.py
 
-  # The toolchain is pinned to the MSRV rather than to `stable`, so a language
-  # feature newer than `rust-version` in Cargo.toml fails here rather than in a
-  # consumer's `cargo install`. The two have to move together, which is why
-  # dependabot.yml holds this action out of its actions group.
+  # Pinned to the MSRV on this job and on `rust-test` and `parity` below, so a
+  # language feature newer than `rust-version` in Cargo.toml fails here rather
+  # than in a consumer's `cargo install`. That pin and `rust-version` move
+  # together, which is why dependabot.yml holds this action out of its actions
+  # group. `rust-test-stable` asks the other half of the question -- whether
+  # the crate still builds on a current toolchain -- and is the one place the
+  # ref is allowed to float.
   #
   # No build cache on either job. `[dependencies]` is empty and stays that way,
   # so a cold compile is a couple of seconds -- less than restoring a cache
@@ -283,6 +339,35 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.86.0
+      - run: cargo test
+
+  # Deliberately not a required context, for the reason `coverage` is not: the
+  # ref floats, so an upstream Rust release can turn this red with no commit
+  # here at fault, and gating on it would block every open pull request --
+  # including a bot's, which `bot-automerge.yml` waits on the full set for.
+  #
+  # A separate job rather than a `toolchain` axis on `rust-test`. A matrix value
+  # becomes part of the check name, so an axis would rename
+  # `rust-test (ubuntu-latest)` and its two siblings, all three of which are
+  # required contexts. A `pull_request` run reads the workflow from the merge
+  # ref, so no ruleset state satisfies both the old and the new names at once
+  # and something is blocked either way. Adding a job renames nothing.
+  #
+  # No matrix at all, not even a single-value one: `matrix: {os: [ubuntu-latest]}`
+  # would produce `rust-test-stable (ubuntu-latest)` and rename itself the day a
+  # second platform is added.
+  #
+  # `cargo test` and no clippy. Clippy is where a new release lands new lints,
+  # and that churn is exactly what must not reach a gate; `rust-lint` keeps
+  # clippy on the pinned toolchain. One platform, because a compiler regression
+  # in code that touches nothing platform-specific is not platform-specific --
+  # and the line-ending behavior that is lives on the pinned legs above.
+  rust-test-stable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: rustc --version
       - run: cargo test
 
   parity:
