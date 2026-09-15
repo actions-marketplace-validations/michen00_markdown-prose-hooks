@@ -40,9 +40,9 @@ jobs:
       contents: read
       checks: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@1.86.0
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
       - run: cargo build --release --locked
@@ -228,7 +228,7 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       # Pinned to the MSRV for the same reason CI is: a language feature newer
       # than `rust-version` in Cargo.toml has to fail here rather than in a
       # consumer's `cargo install`.
@@ -334,8 +334,8 @@ jobs:
       # Mints the OIDC token. It grants nothing in this repository.
       id-token: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.0.1
       - run: uv build
       # The registry rejects a bad distribution after upload has already
       # consumed the version number, so it is checked before, not after.
@@ -356,7 +356,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@1.86.0
       # No fallback, and nothing absorbing a failure. The crate exists and
       # carries a trusted publisher, so a failure here is a real one and has to
@@ -419,7 +419,7 @@ jobs:
       # Writes one tag, and only when the checks below agree it should.
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           # Every tag, because deciding whether this release is the newest means
           # comparing it against the others.

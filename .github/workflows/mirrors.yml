@@ -47,7 +47,7 @@ jobs:
       # existed carries none at all. The version comes from the manifests for the
       # same reason `action.yml` reads it there -- a ref can be a branch or a
       # commit, while a release is named after a version.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Resolve the version being mirrored
         id: target
@@ -74,7 +74,7 @@ jobs:
           fi
           echo "tag=v${version}" >>"${GITHUB_OUTPUT}"
           echo "version=${version}" >>"${GITHUB_OUTPUT}"
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v10.0.1
       - uses: dtolnay/rust-toolchain@1.86.0
 
       - name: Generate both mirrors
