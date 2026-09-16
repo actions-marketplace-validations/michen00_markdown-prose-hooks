@@ -45,7 +45,7 @@ jobs:
     # findings come from those pins and not from this line.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
@@ -108,7 +108,7 @@ jobs:
           - os: windows-latest
             python-version: '3.14'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
@@ -145,7 +145,7 @@ jobs:
     env:
       COVERAGE_REPORT: coverage.xml
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 2 # fetch-depth of 2 enables diff coverage
       - uses: astral-sh/setup-uv@v10.0.1
@@ -172,7 +172,7 @@ jobs:
     # mirrors hold; this compares it against what `pre-commit` will accept.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
@@ -254,7 +254,7 @@ jobs:
     # green `hook` job does not cover it.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       # No `paths`: the action's default sweep is every tracked Markdown file, and
       # the tool now drops the corpus from that list on its own. Letting the default
       # run is the stronger test anyway -- it exercises the path a consumer takes.
@@ -298,7 +298,7 @@ jobs:
     # blocked on reaching the network to ask.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Compare each mirror against the id its tags were published from
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -318,7 +318,7 @@ jobs:
   rust-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@1.86.0
         with:
           components: rustfmt, clippy
@@ -337,7 +337,7 @@ jobs:
         # pinning CRLF pins it on every runner.
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@1.86.0
       - run: cargo test
 
@@ -365,7 +365,7 @@ jobs:
   rust-test-stable:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@stable
       - run: rustc --version
       - run: cargo test
@@ -381,7 +381,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@1.86.0
       - uses: astral-sh/setup-uv@v10.0.1
         with:
@@ -413,7 +413,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
