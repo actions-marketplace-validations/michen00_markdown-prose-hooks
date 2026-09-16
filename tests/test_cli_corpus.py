@@ -25,6 +25,22 @@ import pytest
 
 _REPO = Path(__file__).resolve().parents[1]
 _CLI_CORPUS = _REPO / 'corpus' / 'cli'
+# Read at import because the cases are loaded at import. A case whose answer key
+# is about to be generated has none on disk yet, and the load has to tolerate
+# that or regeneration can never run for a new case. One name, so that the
+# places consulting it cannot disagree within a run.
+_REGENERATING = bool(os.environ.get('REGENERATE_CLI_CORPUS'))
+# Whether `corpus/` came from a ref other than this one. `smoke.yml` takes it
+# from the release under test while the harness comes from here, so a rule this
+# file states about how a case is written would be read against cases authored
+# before the rule existed. That corpus states what the published version has to
+# do, and the shape of a case is not part of what it states. Nothing here fails
+# when the tier stops setting it, so `test_workflow_contracts.py` asserts the
+# declaration.
+_CORPUS_FROM_TAG = bool(os.environ.get('CORPUS_FROM_TAG'))
+# The implementation whose run becomes the answer key. Every other one is then
+# checked against what it wrote.
+_REFERENCE_RUNNER = 'py'
 
 
 @dataclass(frozen=True)
@@ -135,6 +151,23 @@ def _runners() -> list[Runner]:
     return runners
 
 
+def _runs_this_pass(label: str, *, regenerating: bool) -> bool:
+    """Return whether the runner named ``label`` does any work this pass.
+
+    Regeneration is a write pass. The reference implementation runs, and what it
+    produces is recorded as the answer key. Every expectation the harness holds
+    was read at collection, before that write, so a second implementation
+    checked in the same pass compares against bytes that are already stale: it
+    fails on exactly the cases whose keys needed rewriting, and passes only on
+    the ones that did not need regenerating at all.
+
+    Holding it out keeps the two jobs apart. Regeneration writes, and the
+    ordinary run that follows is what checks every implementation against the
+    reviewed result.
+    """
+    return not regenerating or label == _REFERENCE_RUNNER
+
+
 class CliCase:
     """One CLI case: its tree, its expectations, and why it exists."""
 
@@ -142,7 +175,8 @@ class CliCase:
         """Load the case rooted at ``directory``."""
         self.slug = directory.name
         self.directory = directory
-        meta = _parse_meta(directory / 'case.txt')
+        case_file = directory / 'case.txt'
+        meta = _parse_meta(case_file, _read_verbatim(case_file))
         self.name = meta['name']
         self.why = meta['why']
         self.argv = meta['argv'].split()
@@ -165,26 +199,49 @@ class CliCase:
         # input without one would otherwise inherit the terminal and hang.
         stdin = directory / 'stdin.md'
         self.stdin = stdin.read_bytes() if stdin.exists() else b''
+        # Which tree this case is checked against. The counts the transform
+        # tier records have no analog here, so there is no count check.
+        expected_tree = directory / 'expected'
+        self.expected_from_tree = _expects_unchanged(
+            self.slug,
+            meta,
+            expected_tree_exists=expected_tree.is_dir(),
+            regenerating=_REGENERATING,
+        )
 
     def __str__(self) -> str:
         """Return the slug, used as the parametrize id."""
         return self.slug
 
 
-def _parse_meta(path: Path) -> dict[str, str]:
-    """Return the ``key: value`` pairs in a case's metadata file."""
+def _read_verbatim(path: Path) -> str:
+    """Return ``path`` with its line endings untranslated."""
+    # `Path.open` rather than `Path.read_text(newline=...)`, which only grew the
+    # keyword in 3.13. The floor here is 3.10, and the suite has to run on it.
+    with path.open(encoding='utf-8', newline='') as handle:
+        return handle.read()
+
+
+def _parse_meta(path: Path, contents: str) -> dict[str, str]:
+    """Return the ``key: value`` pairs in a case's metadata file.
+
+    A non-empty line carrying no colon is malformed and is rejected, matching
+    the transform tier and the rule stated in `corpus/cli/README.md`.
+
+    Takes the text rather than reading it, so the rule is testable without a
+    case directory.
+    """
     # The same format the transform tier uses, and deliberately not YAML: this
     # package has no dependencies, and every other implementation would need a
     # parser too.
-    # `Path.open` rather than `Path.read_text(newline=...)`, which only grew the
-    # keyword in 3.13. The floor here is 3.10, and the suite has to run on it.
     meta: dict[str, str] = {}
-    with path.open(encoding='utf-8', newline='') as handle:
-        contents = handle.read()
     for line in contents.splitlines():
         if not (stripped := line.strip()):
             continue
-        key, _, value = stripped.partition(':')
+        key, separator, value = stripped.partition(':')
+        if not separator:
+            msg = f'{path}: line without a colon: {stripped!r}'
+            raise AssertionError(msg)
         meta[key.strip()] = value.strip()
     return meta
 
@@ -242,11 +299,117 @@ def _apply_modes(case: CliCase, scratch: Path) -> list[tuple[Path, int]]:
     return restore
 
 
+_UNCHANGED = 'unchanged'
+
+
+def _expects_unchanged(
+    slug: str,
+    meta: dict[str, str],
+    *,
+    expected_tree_exists: bool,
+    regenerating: bool = False,
+) -> bool:
+    """Return whether a case's answer key is its own `tree/`.
+
+    A case states the tree it expects exactly once: either `expected: unchanged`
+    in its metadata, or an `expected/` tree on disk. Both is a contradiction
+    with no defensible tiebreak; neither is a case that asserts nothing about
+    what the run left behind.
+
+    This is the case-level absence and is not the file-level one. A file
+    missing from a *present* `expected/` means the run deleted it, which is why
+    `expected/` is the whole tree rather than a diff. An absent `expected/`
+    with the key means the run touched nothing at all.
+
+    Stating neither form is an error at verification time, which is when a case
+    has to assert something. Under regeneration the answer key is what the run
+    is about to produce, so its absence is the state every new case starts in
+    and the case loads with the tree still to be written.
+
+    Split from the filesystem so the rule is testable without building a case
+    directory, matching `tests/test_corpus.py` next door.
+    """
+    declared = meta.get('expected')
+    if declared is None:
+        if expected_tree_exists or regenerating:
+            return False
+        msg = f'{slug}: states no expected tree'
+        raise AssertionError(msg)
+    if declared != _UNCHANGED:
+        msg = f'{slug}: expected: {declared} is not a known relation'
+        raise AssertionError(msg)
+    if expected_tree_exists:
+        msg = f'{slug}: states its expected tree twice'
+        raise AssertionError(msg)
+    return True
+
+
 def load_cli_corpus() -> list[CliCase]:
     """Return every CLI case, ordered by slug."""
     if not _CLI_CORPUS.is_dir():
         return []
     return [CliCase(d) for d in sorted(_CLI_CORPUS.iterdir()) if d.is_dir()]
+
+
+def _cli_meta(**overrides: str) -> dict[str, str]:
+    """Return a well-formed CLI-tier metadata mapping."""
+    meta = {'name': 'a case', 'why': 'because', 'argv': '--write .', 'exit_code': '0'}
+    meta.update(overrides)
+    return meta
+
+
+def test_a_cli_metadata_line_without_a_colon_is_rejected() -> None:
+    """A line the Rust reader would skip is malformed in both tiers."""
+    with pytest.raises(AssertionError, match='without a colon'):
+        _parse_meta(Path('case.txt'), 'name: a case\nexpected\n')
+
+
+def test_a_blank_cli_metadata_line_is_not_malformed() -> None:
+    """Blank lines separate keys and carry nothing to reject."""
+    assert _parse_meta(Path('case.txt'), 'name: a case\n\n   \n') == {'name': 'a case'}
+
+
+def test_a_declared_cli_case_compares_against_its_tree() -> None:
+    """`expected: unchanged` says the run left the tree exactly as given."""
+    assert _expects_unchanged(
+        'slug', _cli_meta(expected='unchanged'), expected_tree_exists=False
+    )
+
+
+def test_an_undeclared_cli_case_compares_against_its_expected_tree() -> None:
+    """With no declaration the `expected/` tree is the answer key."""
+    assert not _expects_unchanged('slug', _cli_meta(), expected_tree_exists=True)
+
+
+def test_a_cli_case_stating_its_tree_twice_is_rejected() -> None:
+    """Declaring `unchanged` and shipping `expected/` is a contradiction."""
+    with pytest.raises(AssertionError, match='twice'):
+        _expects_unchanged(
+            'slug', _cli_meta(expected='unchanged'), expected_tree_exists=True
+        )
+
+
+def test_a_cli_case_stating_no_tree_is_rejected() -> None:
+    """Neither form present is a case that asserts nothing about the tree."""
+    with pytest.raises(AssertionError, match='no expected tree'):
+        _expects_unchanged(
+            'slug', _cli_meta(), expected_tree_exists=False, regenerating=False
+        )
+
+
+def test_a_cli_case_stating_no_tree_loads_under_regeneration() -> None:
+    """Regeneration loads a case whose `expected/` it is about to write."""
+    assert not _expects_unchanged(
+        'slug', _cli_meta(), expected_tree_exists=False, regenerating=True
+    )
+
+
+def test_an_unknown_cli_relation_is_rejected() -> None:
+    """`unchanged` is the only relation the key names."""
+    with pytest.raises(AssertionError, match='not a known relation'):
+        _expects_unchanged(
+            'slug', _cli_meta(expected='rebuilt'), expected_tree_exists=False
+        )
 
 
 CLI_CASES = load_cli_corpus()
@@ -259,10 +422,32 @@ def test_the_cli_corpus_is_not_empty() -> None:
     assert CLI_CASES, f'no CLI cases found under {_CLI_CORPUS}'
 
 
+def test_regeneration_runs_the_reference_implementation() -> None:
+    """The pass that records an answer key has to run the tool that writes it."""
+    assert _runs_this_pass(_REFERENCE_RUNNER, regenerating=True)
+
+
+def test_regeneration_holds_out_every_other_implementation() -> None:
+    """Their expectations were read at collection, before the key was rewritten."""
+    assert not _runs_this_pass('rs', regenerating=True)
+
+
+def test_an_ordinary_pass_runs_every_implementation() -> None:
+    """Holding one out is what regeneration does, and nothing else does it."""
+    assert _runs_this_pass('rs', regenerating=False)
+    assert _runs_this_pass(_REFERENCE_RUNNER, regenerating=False)
+
+
 @pytest.mark.parametrize('runner', _runners(), ids=str)
 @pytest.mark.parametrize('case', CLI_CASES, ids=str)
 def test_cli_case(case: CliCase, runner: Runner, tmp_path: Path) -> None:
     """Each case's run produces its expected tree, stdout and exit code."""
+    if not _runs_this_pass(runner.label, regenerating=_REGENERATING):
+        pytest.skip(
+            f'regeneration records the {_REFERENCE_RUNNER} run; '
+            f'{runner.label} is checked by the ordinary pass that follows'
+        )
+
     scratch = tmp_path / 'tree'
     shutil.copytree(case.directory / 'tree', scratch, symlinks=True)
     restore = _apply_modes(case, scratch)
@@ -278,7 +463,7 @@ def test_cli_case(case: CliCase, runner: Runner, tmp_path: Path) -> None:
     for target, mode in restore:
         target.chmod(mode)
 
-    if os.environ.get('REGENERATE_CLI_CORPUS') and runner.label == 'py':
+    if _REGENERATING:
         _regenerate(case, scratch, completed)
         return
 
@@ -289,7 +474,8 @@ def test_cli_case(case: CliCase, runner: Runner, tmp_path: Path) -> None:
     detail = completed.stderr.decode('utf-8', 'replace')
     assert completed.returncode == case.exit_code, f'{context}\nstderr:\n{detail}'
     assert completed.stdout == case.stdout, f'{context}\nstderr:\n{detail}'
-    assert _snapshot(scratch) == _snapshot(case.directory / 'expected'), context
+    baseline = case.directory / ('tree' if case.expected_from_tree else 'expected')
+    assert _snapshot(scratch) == _snapshot(baseline), context
 
 
 def _regenerate(
@@ -319,12 +505,43 @@ def _regenerate(
         )
         raise AssertionError(message)
 
+    if case.expected_from_tree:
+        # The declaration is a statement of intent by a person. Materializing
+        # an `expected/` here would convert a case that means "this is left
+        # alone" into one asserting whatever the run happened to do, which is
+        # regeneration overwriting intent with observation.
+        if _snapshot(scratch) != _snapshot(case.directory / 'tree'):
+            message = (
+                f'{case.slug}: declares expected {_UNCHANGED} but the run modified '
+                f'the tree. Remove the declaration if the change is intended.'
+            )
+            raise AssertionError(message)
+        _write_stdout(case, completed)
+        return
+
     expected = case.directory / 'expected'
     shutil.rmtree(expected, ignore_errors=True)
     shutil.copytree(scratch, expected, symlinks=True)
 
+    _write_stdout(case, completed)
+
+
+def _write_stdout(case: CliCase, completed: subprocess.CompletedProcess[bytes]) -> None:
+    """Record what the run printed, or remove the file when it printed nothing."""
     stdout_path = case.directory / 'stdout.txt'
     if completed.stdout:
         stdout_path.write_bytes(completed.stdout)
     elif stdout_path.exists():
         stdout_path.unlink()
+
+
+@pytest.mark.skipif(_CORPUS_FROM_TAG, reason='the corpus predates this rule')
+def test_no_cli_case_ships_a_redundant_expected_tree() -> None:
+    """An `expected/` equal to its `tree/` states nothing the tree did not."""
+    redundant = [
+        case.slug
+        for case in CLI_CASES
+        if not case.expected_from_tree
+        and _snapshot(case.directory / 'expected') == _snapshot(case.directory / 'tree')
+    ]
+    assert not redundant, f'these cases should declare unchanged instead: {redundant}'

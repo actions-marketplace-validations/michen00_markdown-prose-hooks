@@ -1,6 +1,6 @@
 # Tidying a pull request body
 
-This document explains a fourth surface for the transform, and the first that is not a file. Both workflows it describes are built.
+This document explains a fourth surface for the transform, and the first that is not a file. Both workflows it describes are built, and this repository calls both.
 
 ## Why this is needed
 
@@ -125,9 +125,11 @@ One hazard belongs there for consumers rather than for this repository. Requesti
 
 ## Verification
 
-A caller triggered by `pull_request_target` reads its workflow file from the default branch, so a pull request here cannot exercise it. CLAUDE.md records the same limitation for the comment half of the existing pair. That limitation is partly self-inflicted, because no test under `tests/` reads `.github/workflows` at all, and a workflow that cannot be run can still have its wiring asserted. A test can require that the trigger is the intended one, that the permissions are the narrow set listed above, that no step checks out or executes anything from the pull request, and that the body never reaches a shell through expression interpolation. Writing those tests is part of this change, and they would cover the existing pair as well.
+A caller triggered by `pull_request_target` reads its workflow file from the default branch, so a pull request here cannot exercise it. CLAUDE.md records the same limitation for the comment half of the existing pair. A workflow that cannot be run can still have its wiring asserted, and `tests/test_workflow_contracts.py` asserts it for both halves of this surface: that the trigger is `workflow_call`, that the permissions are the narrow set listed above, that no step checks out or executes anything from the pull request, that the body never reaches a shell through expression interpolation, and that the two halves name one report marker. It covers the existing pair as well. That table holds reusable workflows alone, so a caller — this repository's own included, as with `freeze-pr-links.yml` — falls instead to the checks that read every file in the directory.
 
-Using this repository as the first consumer proves less than it appears to. Every open pull request body here already passes through the transform unchanged, which `gh pr view <n> --json body -q .body | unwrap-markdown-prose -` reports for any of them. Enabling the workflow here would demonstrate that it runs, not that it changes anything. Genuine verification is the contract tests together with one deliberately wrapped body on a pull request in `unwrap-fork-pair-check`.
+This repository is the first consumer. Bodies here are written in an editor or by an agent rather than in the browser field, which is the authorship [the opening measurement](#why-this-is-needed) identifies as the one that wraps, and `gh pr view <n> --json body --template '{{.body}}' | unwrap-markdown-prose-py -` answers for any single body. The reporting half runs here for that reason, called by path from `.github/workflows/prose-body.yml`: what it reports is a verdict on a wrapped body rather than a demonstration that the workflow starts.
+
+The editing half runs here too, from `.github/workflows/prose-body-write.yml`, and the two callers divide the events between them: the edit takes `opened`, `reopened` and `ready_for_review`, and the report takes `synchronize` and `edited`. Sharing one would run both at once and leave the report describing a body the edit is about to replace.
 
 ## What a consumer configures
 
@@ -143,7 +145,7 @@ The reference version of this belongs in [README.md](../README.md) once the work
 
 The first two belong to the reporting workflow. The editing workflow accepts neither.
 
-A bot-authored pull request is skipped in every mode, for the reason the measurement gives. A draft receives a comment but no edit, and an empty body produces no action at all.
+A bot-authored pull request is skipped in every mode, for the reason the measurement gives. A draft receives no edit, and where the two halves divide the events it receives the comment on its first push or body edit rather than when it opens. An empty body produces no action at all.
 
 The comment carries the fixed marker `<!-- unwrap-pr-body -->` as its first line, and is not configurable. It is namespaced to this tool already, so a collision requires a consumer to have chosen the same string independently, and making it configurable is also how two callers in one repository would come to overwrite each other's comment. Adding the input later would not break a consumer, whereas removing it would. The comment locates its previous copy by matching that marker at the start of a comment body and by requiring the author to be a bot, so a comment from a person quoting the marker is never edited. It is deleted, not rewritten, once the body is clean. A run with nothing to report calls no API at all, because the common case has to be silent or the surface becomes noise.
 

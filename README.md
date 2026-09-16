@@ -48,7 +48,7 @@ Add to `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/michen00/markdown-prose-hooks-py
-    rev: v0.4.0 # Use the latest version
+    rev: v0.5.0 # Use the latest version
     hooks:
       # Pick one. The first rewrites the file; the second only reports.
       - id: unwrap-markdown-prose-py
@@ -86,7 +86,7 @@ Where nothing else does, take the rewriting id and let the hook hold the convent
 ```yaml
 repos:
   - repo: https://github.com/michen00/markdown-prose-hooks-py
-    rev: v0.4.0 # Use the latest version
+    rev: v0.5.0 # Use the latest version
     hooks:
       - id: unwrap-markdown-prose-py-check
 ```
@@ -108,7 +108,7 @@ Add any other extension your Markdown uses, or `*` to treat every file as Markdo
 
 ```yaml
 - uses: actions/checkout@v7
-- uses: michen00/markdown-prose-hooks@v0.4.0
+- uses: michen00/markdown-prose-hooks@v0.5.0
   with:
     write: 'false'
     fail-on-change: 'true'
@@ -145,7 +145,7 @@ permissions:
 
 steps:
   - uses: actions/checkout@v7
-  - uses: michen00/markdown-prose-hooks@v0.4.0
+  - uses: michen00/markdown-prose-hooks@v0.5.0
     id: unwrap
     with:
       write: 'true'
@@ -170,7 +170,7 @@ permissions:
   contents: read
 jobs:
   propose:
-    uses: michen00/markdown-prose-hooks/.github/workflows/unwrap-propose.yml@v0.4.0
+    uses: michen00/markdown-prose-hooks/.github/workflows/unwrap-propose.yml@v0.5.0
 ```
 
 ```yaml
@@ -186,10 +186,12 @@ jobs:
     permissions:
       actions: read
       pull-requests: write
-    uses: michen00/markdown-prose-hooks/.github/workflows/unwrap-comment.yml@v0.4.0
+    uses: michen00/markdown-prose-hooks/.github/workflows/unwrap-comment.yml@v0.5.0
 ```
 
 The contributor then gets one comment, edited in place on every push rather than added to, naming the files, the single command that fixes them, and the patch folded underneath. `workflow_run` matches the **caller's** `name:` and never the reusable file. It fires only for a copy of the workflow already on your default branch, and it does not appear among the pull request's own checks.
+
+The proposing half exposes a `changed` output — `"true"` when any file changed or would change — and a job with `needs:` on your calling job can read it.
 
 `annotate` is the fork-safe signal that needs no second file at all. It costs no permissions, so it reaches a fork's pull request on its own, and it stays on underneath the pair.
 
@@ -209,7 +211,7 @@ jobs:
   report:
     permissions:
       pull-requests: write
-    uses: michen00/markdown-prose-hooks/.github/workflows/unwrap-pr-body-check.yml@v0.4.0
+    uses: michen00/markdown-prose-hooks/.github/workflows/unwrap-pr-body-check.yml@v0.5.0
 ```
 
 `edited` is the type that matters here and it is not in the default set, which is `opened`, `synchronize` and `reopened`. Editing a body fires `edited` alone. Without it, an author who does what the comment asks — replacing the body with the tidied text — produces no run, and the report stands on a body that is now clean until the next push to the branch.
@@ -244,16 +246,16 @@ jobs:
   edit:
     permissions:
       pull-requests: write
-    uses: michen00/markdown-prose-hooks/.github/workflows/unwrap-pr-body.yml@v0.4.0
+    uses: michen00/markdown-prose-hooks/.github/workflows/unwrap-pr-body.yml@v0.5.0
 ```
 
-It takes `targets`, `implementation` and `python-version`, and neither `comment` nor `fail-on-wrapped`.
+It takes `targets`, `implementation` and `python-version`, and neither `comment` nor `fail-on-wrapped`. It exposes a `rewritten` output — `"true"` when the run rewrote the body and `"false"` when it did not — and a job with `needs:` on your calling job can read it.
 
 This writes the change rather than suggesting it, and it cannot tell a deliberate break from a wrapped one. In a file, that guess has evidence: an author who wanted the break would have typed a hard-break marker, and none is there. A body needs no marker, so the guess has no evidence, and a break you meant to keep can be joined. The report is the default for that reason.
 
 `pull_request_target` is the only trigger it accepts, and a call from `pull_request` fails the run. Under `pull_request`, the workflow file comes from the pull request itself, and that file is what grants the token, so anyone who can push a branch would get write access. Because `pull_request_target` reads the workflow from your default branch, a pull request cannot try it out: merge it first.
 
-A draft is reported on and not edited. The `ready_for_review` type above is what runs the edit when the author marks it ready. A bot's pull request and an empty body are skipped here too, and so is a body the author edits while the run is queued: the rewrite sends a whole body, so writing it would drop what they typed in between.
+A draft is not edited. The `ready_for_review` type above is what runs the edit when the author marks it ready. Where the two halves divide the events as below, the report reaches a draft on its first push or body edit, and a draft marked ready without either is rewritten rather than reported. A bot's pull request and an empty body are skipped here too, and so is a body the author edits while the run is queued: the rewrite sends a whole body, so writing it would drop what they typed in between.
 
 Give the two halves different trigger types. The edit uses `opened`, `reopened` and `ready_for_review` as above. Narrow the report to `synchronize` and `edited`, dropping the `opened` and `reopened` that its own example above carries. Sharing an event fires both at once, and the report then describes a body the edit is about to replace. After a rewrite, the edit deletes any report it finds. The reporting half cannot do that itself: GitHub starts no workflow run for an event caused by its own `GITHUB_TOKEN`, so nothing tells it the body has changed.
 

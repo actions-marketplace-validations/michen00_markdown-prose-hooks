@@ -52,6 +52,12 @@ permissions:
 jobs:
   smoke:
     runs-on: ${{ matrix.os }}
+    env:
+      # The corpus below is taken from the tag rather than from this ref. The
+      # harness reads this to hold back the rules it states about how a case is
+      # written: a case authored since the release under test is not a defect
+      # in that release.
+      CORPUS_FROM_TAG: '1'
     strategy:
       fail-fast: false
       # These are the three the `parity` job covers, and for the same reason:
@@ -125,7 +131,7 @@ jobs:
           fi
           rm -rf corpus
           git checkout "refs/tags/${TAG}" -- corpus
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v10.0.1
       # The floor rather than a current toolchain. `cargo install` is what a
       # consumer runs, and `rust-version` is what this crate promises them.
       - uses: dtolnay/rust-toolchain@1.86.0
