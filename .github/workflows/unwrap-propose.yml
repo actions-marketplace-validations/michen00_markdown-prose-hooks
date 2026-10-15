@@ -104,7 +104,7 @@ jobs:
       # default. A patch is only useful if it applies to the branch the
       # contributor has, and a patch computed against the base merged in does
       # not.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
