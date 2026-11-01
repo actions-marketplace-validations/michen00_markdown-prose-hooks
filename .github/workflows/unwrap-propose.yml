@@ -104,7 +104,7 @@ jobs:
       # default. A patch is only useful if it applies to the branch the
       # contributor has, and a patch computed against the base merged in does
       # not.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
@@ -115,7 +115,7 @@ jobs:
       # names, and between a version bump landing and that version being
       # tagged there is no such release, so a branch caller fails to resolve
       # it until the tag exists.
-      - uses: michen00/markdown-prose-hooks@v0.5.0
+      - uses: michen00/markdown-prose-hooks@v0.5.1
         id: unwrap
         with:
           paths: ${{ inputs.paths }}

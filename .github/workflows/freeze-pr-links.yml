@@ -145,7 +145,7 @@ jobs:
 
       - name: Check out the freeze script from main
         if: steps.tree.outputs.verified == 'true'
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           ref: main
           path: automation
